@@ -102,6 +102,8 @@ which g++
 which python
 which php
 which cc
+which go
+which node
 echo ""
 echo "How can files be uploaded?"
 echo "#####################################################################"
@@ -111,6 +113,7 @@ which netcat
 which scp
 which ftp
 which tftp
+which curl
 echo ""
 echo "#####################################################################"
 echo "Done!"
