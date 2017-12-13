@@ -34,9 +34,9 @@
 # DAMAGE.
 #
 # Name    : checksec.sh
-# Version : 1.4
+# Version : 1.5
 # Author  : Tobias Klein
-# Date    : January 2011
+# Date    : November 2011
 # Download: http://www.trapkit.de/tools/checksec.html
 # Changes : http://www.trapkit.de/tools/checksec_changes.txt
 #
@@ -58,11 +58,12 @@
 #
 # Thanks to Brad Spengler (grsecurity.net) for the PaX support.
 # Thanks to Jon Oberheide (jon.oberheide.org) for the kernel support.
+# Thanks to Ollie Whitehouse (Research In Motion) for rpath/runpath support.
 # 
 # Others that contributed to checksec.sh (in no particular order):
 #
 # Simon Ruderich, Denis Scherbakov, Stefan Kuttler, Radoslaw Madej,
-# Anthony G. Basile. 
+# Anthony G. Basile, Martin Vaeth and Brian Davis. 
 #
 
 # global vars
@@ -78,8 +79,14 @@ FS_chk_func_libc=0
 FS_functions=0
 FS_libc=0
  
+# version information
+version() {
+  echo "checksec v1.5, Tobias Klein, www.trapkit.de, November 2011"
+  echo 
+}
+
 # help
-if [ "$#" = "0" -o "$1" = "--help" ] ; then
+help() {
   echo "Usage: checksec [OPTION]"
   echo
   echo "Options:"
@@ -98,13 +105,6 @@ if [ "$#" = "0" -o "$1" = "--help" ] ; then
   echo "For more information, see:"
   echo "  http://www.trapkit.de/tools/checksec.html"
   echo
-  exit 1
-fi
-
-# version information
-version() {
-  echo "checksec v1.4, Tobias Klein, www.trapkit.de, January 2011"
-  echo 
 }
 
 # check if command exists
@@ -169,16 +169,29 @@ filecheck() {
 
   # check for PIE support
   if readelf -h $1 2>/dev/null | grep -q 'Type:[[:space:]]*EXEC'; then
-    echo -n -e '\033[31mNo PIE               \033[m   '
+    echo -n -e '\033[31mNo PIE       \033[m   '
   elif readelf -h $1 2>/dev/null | grep -q 'Type:[[:space:]]*DYN'; then
     if readelf -d $1 2>/dev/null | grep -q '(DEBUG)'; then
-      echo -n -e '\033[32mPIE enabled          \033[m   '
+      echo -n -e '\033[32mPIE enabled  \033[m   '
     else   
-      echo -n -e '\033[33mDynamic Shared Object\033[m   '
+      echo -n -e '\033[33mDSO          \033[m   '
     fi
   else
-    echo -n -e '\033[33mNot an ELF file      \033[m   '
+    echo -n -e '\033[33mNot an ELF file\033[m   '
   fi 
+
+  # check for rpath / run path
+  if readelf -d $1 2>/dev/null | grep -q 'rpath'; then
+   echo -n -e '\033[31mRPATH    \033[m  '
+  else
+   echo -n -e '\033[32mNo RPATH \033[m  '
+  fi
+
+  if readelf -d $1 2>/dev/null | grep -q 'runpath'; then
+   echo -n -e '\033[31mRUNPATH    \033[m  '
+  else
+   echo -n -e '\033[32mNo RUNPATH \033[m  '
+  fi
 }
 
 # check process(es)
@@ -332,9 +345,9 @@ kernelcheck() {
     kconfig="cat /boot/config-`uname -r`"
     printf "\033[33m/boot/config-`uname -r`\033[m\n\n"
     printf "  Warning: The config on disk may not represent running kernel config!\n\n";
-  elif [ -f /usr/src/linux/.config ] ; then
-    kconfig="cat /usr/src/linux/.config"
-    printf "\033[33m/usr/src/linux/.config\033[m\n\n"
+  elif [ -f "${KBUILD_OUTPUT:-/usr/src/linux}"/.config ] ; then
+    kconfig="cat ${KBUILD_OUTPUT:-/usr/src/linux}/.config"
+    printf "\033[33m%s\033[m\n\n" "${KBUILD_OUTPUT:-/usr/src/linux}/.config"
     printf "  Warning: The config on disk may not represent running kernel config!\n\n";
   else
     printf "\033[31mNOT FOUND\033[m\n\n"
@@ -535,21 +548,28 @@ FS_summary() {
 
 # --- FORTIFY_SOURCE subfunctions (end) ---
 
-if [ "$1" = "--version" ] ; then
-  version
-  exit 0
-fi
-
 if !(command_exists readelf) ; then
   printf "\033[31mWarning: 'readelf' not found! It's required for most checks.\033[m\n\n"
   have_readelf=0
 fi
 
-if [ "$3" = "-v" ] ; then
-  verbose=true
-fi
+# parse command-line arguments
+case "$1" in
 
-if [ "$1" = "--dir" ] ; then
+ --version)
+  version
+  exit 0
+  ;;
+
+ --help)
+  help
+  exit 0
+  ;;
+
+ --dir)
+  if [ "$3" = "-v" ] ; then
+    verbose=true
+  fi
   if [ $have_readelf -eq 0 ] ; then
     exit 1
   fi
@@ -564,7 +584,7 @@ if [ "$1" = "--dir" ] ; then
     exit 1
   fi
   cd $tempdir
-  printf "RELRO           STACK CANARY      NX            PIE                     FILE\n"
+  printf "RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH      FILE\n"
   for N in [A-Za-z]*; do
     if [ "$N" != "[A-Za-z]*" ]; then
       # read permissions?
@@ -592,9 +612,9 @@ if [ "$1" = "--dir" ] ; then
     fi
   done
   exit 0
-fi
-
-if [ "$1" = "--file" ] ; then
+  ;;
+ 
+ --file)
   if [ $have_readelf -eq 0 ] ; then
     exit 1
   fi
@@ -620,7 +640,7 @@ if [ "$1" = "--file" ] ; then
     printf "\033[m\n"
     exit 1
   fi
-  printf "RELRO           STACK CANARY      NX            PIE                     FILE\n"
+  printf "RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH      FILE\n"
   filecheck $2
   if [ `find $2 \( -perm -004000 -o -perm -002000 \) -type f -print` ] ; then
     printf "\033[37;41m%s%s\033[m" $2 $N
@@ -629,9 +649,9 @@ if [ "$1" = "--file" ] ; then
   fi
   echo
   exit 0
-fi
+  ;;
 
-if [ "$1" = "--proc-all" ] ; then
+ --proc-all)
   if [ $have_readelf -eq 0 ] ; then
     exit 1
   fi
@@ -659,9 +679,9 @@ if [ "$1" = "--proc-all" ] ; then
     fi
   fi
   exit 0
-fi
+  ;;
 
-if [ "$1" = "--proc" ] ; then
+ --proc)
   if [ $have_readelf -eq 0 ] ; then
     exit 1
   fi
@@ -700,9 +720,9 @@ if [ "$1" = "--proc" ] ; then
     fi
   done
   exit 0
-fi
+  ;;
 
-if [ "$1" = "--proc-libs" ] ; then
+ --proc-libs)
   if [ $have_readelf -eq 0 ] ; then
     exit 1
   fi
@@ -742,16 +762,16 @@ if [ "$1" = "--proc-libs" ] ; then
     libcheck $N
   fi
   exit 0
-fi
+  ;;
 
-if [ "$1" = "--kernel" ] ; then
+ --kernel)
   cd /proc
   printf "* Kernel protection information:\n\n"
   kernelcheck
   exit 0
-fi
+  ;;
 
-if [ "$1" = "--fortify-file" ] ; then
+ --fortify-file)
   if [ $have_readelf -eq 0 ] ; then
     exit 1
   fi
@@ -781,6 +801,10 @@ if [ "$1" = "--fortify-file" ] ; then
     FS_libc=/lib/libc.so.6
   elif [ -e /lib64/libc.so.6 ] ; then
     FS_libc=/lib64/libc.so.6
+  elif [ -e /lib/i386-linux-gnu/libc.so.6 ] ; then
+    FS_libc=/lib/i386-linux-gnu/libc.so.6
+  elif [ -e /lib/x86_64-linux-gnu/libc.so.6 ] ; then
+    FS_libc=/lib/x86_64-linux-gnu/libc.so.6
   else
     printf "\033[31mError: libc not found.\033[m\n\n"
     exit 1
@@ -795,9 +819,9 @@ if [ "$1" = "--fortify-file" ] ; then
   FS_summary
 
   exit 0
-fi
+  ;;
 
-if [ "$1" = "--fortify-proc" ] ; then
+ --fortify-proc)
   if [ $have_readelf -eq 0 ] ; then
     exit 1
   fi
@@ -828,6 +852,10 @@ if [ "$1" = "--fortify-proc" ] ; then
       FS_libc=/lib/libc.so.6
     elif [ -e /lib64/libc.so.6 ] ; then
       FS_libc=/lib64/libc.so.6
+    elif [ -e /lib/i386-linux-gnu/libc.so.6 ] ; then
+      FS_libc=/lib/i386-linux-gnu/libc.so.6
+    elif [ -e /lib/x86_64-linux-gnu/libc.so.6 ] ; then
+      FS_libc=/lib/x86_64-linux-gnu/libc.so.6
     else
       printf "\033[31mError: libc not found.\033[m\n\n"
       exit 1
@@ -840,10 +868,15 @@ if [ "$1" = "--fortify-proc" ] ; then
     FS_binary_check
     FS_comparison
     FS_summary
-      
   fi
   exit 0
-fi
+  ;;
 
-printf "\033[31mError: Unknown option '$1'.\033[m\n\n"
-exit 1
+ *)
+  if [ "$#" != "0" ] ; then
+    printf "\033[31mError: Unknown option '$1'.\033[m\n\n"
+  fi
+  help
+  exit 1
+  ;;
+esac
